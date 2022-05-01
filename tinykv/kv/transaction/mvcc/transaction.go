@@ -100,6 +100,7 @@ type MvccTxn struct {
 }
 
 // A 'transaction' which will only read from the DB.
+// RoTxn 只读事务
 type RoTxn struct {
 	Reader  storage.StorageReader
 	StartTS uint64
@@ -117,6 +118,7 @@ func (txn *MvccTxn) Writes() []storage.Modify {
 
 // MostRecentWrite finds the most recent write with the given key. It returns a Write from the DB and that
 // write's commit timestamp, or an error.
+// 找到keys中最近写过的这个key
 func (txn *RoTxn) MostRecentWrite(key []byte) (*Write, uint64, error) {
 	return txn.mostRecentWriteBefore(key, TsMax)
 }
@@ -124,6 +126,7 @@ func (txn *RoTxn) MostRecentWrite(key []byte) (*Write, uint64, error) {
 // mostRecentWriteBefore finds the write with the given key and the most recent commit timestamp before or equal to ts.
 // It returns a Write from the DB and that write's commit timestamp, or an error.
 // Postcondition: the returned ts is <= the ts arg.
+// 找到 >= ts的最近写过的key
 func (txn *RoTxn) mostRecentWriteBefore(key []byte, ts uint64) (*Write, uint64, error) {
 	iter := txn.Reader.IterCF(engine_util.CfWrite)
 	defer iter.Close()
@@ -150,6 +153,7 @@ func (txn *RoTxn) mostRecentWriteBefore(key []byte, ts uint64) (*Write, uint64, 
 
 // CurrentWrite searches for a write with this transaction's start timestamp. It returns a Write from the DB and that
 // write's commit timestamp, or an error.
+// 找到start_ts == txn.start_ts的写请求
 func (txn *RoTxn) CurrentWrite(key []byte) (*Write, uint64, error) {
 	seekTs := TsMax
 	for {
@@ -172,6 +176,7 @@ func (txn *RoTxn) CurrentWrite(key []byte) (*Write, uint64, error) {
 
 // GetValue finds the value for key, valid at the start timestamp of this transaction.
 // I.e., the most recent value committed before the start of this transaction.
+// 给定key的val
 func (txn *RoTxn) GetValue(key []byte) ([]byte, error) {
 	iter := txn.Reader.IterCF(engine_util.CfWrite)
 	defer iter.Close()
@@ -206,6 +211,7 @@ func (txn *RoTxn) GetValue(key []byte) ([]byte, error) {
 }
 
 // PutWrite records write at key and ts.
+// 记录write的key 和 ts
 func (txn *MvccTxn) PutWrite(key []byte, ts uint64, write *Write) {
 	encodedKey := EncodeKey(key, ts)
 	txn.writes = append(txn.writes, storage.Modify{
@@ -219,6 +225,7 @@ func (txn *MvccTxn) PutWrite(key []byte, ts uint64, write *Write) {
 
 // GetLock returns a lock if key is locked. It will return (nil, nil) if there is no lock on key, and (nil, err)
 // if an error occurs during lookup.
+// 返回key上是否有锁，nil没有锁，nil error 出错了
 func (txn *RoTxn) GetLock(key []byte) (*Lock, error) {
 	bytes, err := txn.Reader.GetCF(engine_util.CfLock, key)
 	if err != nil {
@@ -237,6 +244,7 @@ func (txn *RoTxn) GetLock(key []byte) (*Lock, error) {
 }
 
 // PutLock adds a key/lock to this transaction.
+// 给事务加锁
 func (txn *MvccTxn) PutLock(key []byte, lock *Lock) {
 	txn.writes = append(txn.writes, storage.Modify{
 		Data: storage.Put{
@@ -248,6 +256,7 @@ func (txn *MvccTxn) PutLock(key []byte, lock *Lock) {
 }
 
 // DeleteLock adds a delete lock to this transaction.
+// 删除事务上的锁
 func (txn *MvccTxn) DeleteLock(key []byte) {
 	txn.writes = append(txn.writes, storage.Modify{
 		Data: storage.Delete{
@@ -258,11 +267,13 @@ func (txn *MvccTxn) DeleteLock(key []byte) {
 }
 
 // getValue gets the value at precisely the given key and ts, without searching.
+// 根据给定的key和ts，精准的找到key的值，不需要搜索
 func (txn *RoTxn) getValue(key []byte, ts uint64) ([]byte, error) {
 	return txn.Reader.GetCF(engine_util.CfDefault, EncodeKey(key, ts))
 }
 
 // PutValue adds a key/value write to this transaction.
+// 给事务加上kv写请求
 func (txn *MvccTxn) PutValue(key []byte, value []byte) {
 	txn.writes = append(txn.writes, storage.Modify{
 		Data: storage.Put{
@@ -274,6 +285,7 @@ func (txn *MvccTxn) PutValue(key []byte, value []byte) {
 }
 
 // DeleteValue removes a key/value pair in this transaction.
+// 删除事务中的kv对
 func (txn *MvccTxn) DeleteValue(key []byte) {
 	txn.writes = append(txn.writes, storage.Modify{
 		Data: storage.Delete{

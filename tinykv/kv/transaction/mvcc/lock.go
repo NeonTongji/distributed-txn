@@ -58,6 +58,7 @@ func ParseLock(input []byte) (*Lock, error) {
 }
 
 // IsLockedFor checks if lock locks key at txnStartTs.
+// 判断事务开始时，lock是否锁住了当前key
 func (lock *Lock) IsLockedFor(key []byte, txnStartTs uint64, resp interface{}) bool {
 	if lock == nil {
 		return false
