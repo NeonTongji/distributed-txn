@@ -453,12 +453,35 @@ func (c *RegionCache) LocateRegionByID(bo *Backoffer, regionID uint64) (*KeyLoca
 // 'PrimaryLockKey' and should be committed ahead of others.
 // filter is used to filter some unwanted keys.
 // The return values are the separated groups, first region and error
-//
+// GroupKeysByRegion 根据真实keys所在region划分txn想要修改的keys，
+// 并返回第一个key（把他当做pk）所在的region，pk要比其他key更早commit
+// RegionCache缓存了真实的key所在的region
 // Help function `RegionCache.LocateKey`
 func (c *RegionCache) GroupKeysByRegion(bo *Backoffer, keys [][]byte, filter func(key, regionStartKey []byte) bool) (map[RegionVerID][][]byte, RegionVerID, error) {
 	// YOUR CODE HERE (lab2).
-	panic("YOUR CODE HERE")
-	return nil, RegionVerID{}, nil
+	//panic("YOUR CODE HERE")
+
+	regions := make(map[RegionVerID][][]byte)
+	var pkRegion RegionVerID
+
+	for idx, key := range keys {
+		region, err := c.LocateKey(bo, key)
+		if err != nil {
+			return nil, RegionVerID{}, err
+		}
+
+		if filter != nil && !filter(key, region.StartKey) {
+			continue
+		}
+		// 确定pk所在region
+		if idx == 0 {
+			pkRegion = region.Region
+		}
+		// 保存所有keys分组region信息
+		regions[region.Region] = append(regions[region.Region], key)
+	}
+
+	return regions, pkRegion, nil
 }
 
 // ListRegionIDsInKeyRange lists ids of regions in [start_key,end_key].

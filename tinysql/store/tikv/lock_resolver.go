@@ -287,10 +287,10 @@ func (lr *LockResolver) getTxnStatus(bo *Backoffer, txnID uint64, primary []byte
 	}
 
 	// CheckTxnStatus may meet the following cases:
-	// 1. LOCK
+	// 1. LOCK 锁过期了 或者 在ttl内
 	// 1.1 Lock expired -- orphan lock, fail to update TTL, crash recovery etc.
 	// 1.2 Lock TTL -- active transaction holding the lock.
-	// 2. NO LOCK
+	// 2. NO LOCK  已经commit或者回滚或者还没预写
 	// 2.1 Txn Committed
 	// 2.2 Txn Rollbacked -- rollback itself, rollback by others, GC tomb etc.
 	// 2.3 No lock -- concurrence prewrite.
@@ -298,13 +298,22 @@ func (lr *LockResolver) getTxnStatus(bo *Backoffer, txnID uint64, primary []byte
 	var status TxnStatus
 	var req *tikvrpc.Request
 	// build the request
-	// YOUR CODE HERE (lab2).
-	panic("YOUR CODE HERE")
+	//// YOUR CODE HERE (lab2).
+	//panic("YOUR CODE HERE")
+
+	req = tikvrpc.NewRequest(tikvrpc.CmdCheckTxnStatus, &kvrpcpb.CheckTxnStatusRequest{
+		PrimaryKey: primary,
+		LockTs:     txnID,
+		CurrentTs:  currentTS,
+	})
+
 	for {
+		// 确定pk所在region
 		loc, err := lr.store.GetRegionCache().LocateKey(bo, primary)
 		if err != nil {
 			return status, errors.Trace(err)
 		}
+		// 给pk所在region发送checkTnxStatus
 		resp, err := lr.store.SendReq(bo, req, loc.Region, readTimeoutShort)
 		if err != nil {
 			return status, errors.Trace(err)
@@ -323,18 +332,23 @@ func (lr *LockResolver) getTxnStatus(bo *Backoffer, txnID uint64, primary []byte
 		if resp.Resp == nil {
 			return status, errors.Trace(ErrBodyMissing)
 		}
+		// 获取到pk所在region的状态了
 		cmdResp := resp.Resp.(*kvrpcpb.CheckTxnStatusResponse)
 		logutil.BgLogger().Debug("cmdResp", zap.Bool("nil", cmdResp == nil))
 		// Assign status with response
-		// YOUR CODE HERE (lab2).
-		panic("YOUR CODE HERE")
+		// pk所在region正常
+		status = TxnStatus{
+			ttl:      cmdResp.LockTtl,
+			commitTS: cmdResp.CommitVersion,
+			action:   cmdResp.Action,
+		}
+
 		return status, nil
 	}
 }
 
 // resolveLock resolve the lock for the given transaction status which is checked from primary key.
-// If status is committed, the secondary should also be committed.
-// If status is not committed and the
+// resolveLock 根据pk返回的状态去处理secondary key
 func (lr *LockResolver) resolveLock(bo *Backoffer, l *Lock, status TxnStatus, cleanRegions map[RegionVerID]struct{}) error {
 	cleanWholeRegion := l.TxnSize >= bigTxnThreshold
 	for {
@@ -350,8 +364,12 @@ func (lr *LockResolver) resolveLock(bo *Backoffer, l *Lock, status TxnStatus, cl
 
 		// build the request
 		// YOUR CODE HERE (lab2).
-		panic("YOUR CODE HERE")
-
+		//panic("YOUR CODE HERE")
+		req = tikvrpc.NewRequest(tikvrpc.CmdResolveLock, &kvrpcpb.ResolveLockRequest{
+			StartVersion:  l.TxnID,
+			CommitVersion: status.commitTS, // pk的commit_ts 以此判断pk是否commit
+		})
+		// 发送给每个secondary key的region去resolve lock
 		resp, err := lr.store.SendReq(bo, req, loc.Region, readTimeoutShort)
 		if err != nil {
 			return errors.Trace(err)
