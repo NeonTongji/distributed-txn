@@ -491,7 +491,7 @@ func (actionCommit) handleSingleBatch(c *twoPhaseCommitter, bo *Backoffer, batch
 		return nil
 	}
 
-	if _, ok := failpoint.Eval(_curpkg_(("mockFailAfterPK"))); ok {
+	if _, ok := failpoint.Eval(("mockFailAfterPK")); ok {
 		if !isPrimary {
 			err = errors.New("commit secondary keys error")
 		}
